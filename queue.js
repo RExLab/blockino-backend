@@ -5,12 +5,12 @@ var timeout_id = null;
 
 var status = {
     myturn: false,
-    video: 'http://relle.ufsc.br:8111/',
+    video: 'http://arduino2.relle.ufsc.br:8080', 
     timeslice: timeslice,
     output: "Aguarde um momento",
 };
 
-
+  
 
 exports.push = function (socket, callback, data) {
 

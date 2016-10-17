@@ -6,9 +6,9 @@ var settings = require('./settings.js')
 var server = require('http').createServer(app);
 var io = require('socket.io')(server);
 var queue = require('./queue.js');
-var port = process.env.PORT || 80;
+var port = process.env.PORT || 80;  
 
-var fs = require('fs');
+var fs = require('fs');   
 
 
 app.use('/', express.static('/home/ardublockly'));
@@ -18,16 +18,19 @@ server.listen(port, function () {
 });
 
 var numUsers = 0;
-io.set("heartbeat timeout", 30000);
-io.set("heartbeat interval", 5000);
+var timeout = null;
+
+io.set("heartbeat timeout", 35000);
+io.set("heartbeat interval", 10000);
 
 io.on('connection', function (socket) {
-    activeUser = false;
-    authorized = true;
+    socket.activeUser = false;
+    socket.authorized = true;
 
     socket.lastfilecompiled = "";
     socket.closed = false;
     socket.hasCompiled = false;
+    socket.hadUploaded = false;
 
     socket.on('open debug', function (data) {
         console.log(data);
@@ -39,8 +42,8 @@ io.on('connection', function (socket) {
         socket.filename = socket.id.substring(2, 10);
         socket.aliasname = data.filename;
         arduino.compile(data.file, socket);
-
-        activeUser = true;
+        clearTimeout(timeout);
+        socket.activeUser = true;
     });
 
     socket.on('upload', function (data) {
@@ -48,12 +51,12 @@ io.on('connection', function (socket) {
         // fazer diff entre o último código e o atual
         // compilar, se tiver sucesso segue
         console.log('uploading... ');
-
+        
         if (!socket.hasCompiled || socket.lastfilecompiled != data.file) {
             console.log(data.file);
             socket.filename = socket.id.substring(2, 10);
             socket.aliasname = data.filename;
-            activeUser = true;
+            socket.activeUser = true;
             arduino.compile(data.file, socket, function () {
                 Sendupload(socket, data);
             });
@@ -97,7 +100,7 @@ io.on('connection', function (socket) {
         if (queue.isAuthorized(socket.id)) {
             socket.baudrate = data.baudrate;
             socket.parser = data.parser;
-            if (authorized && activeUser) {
+            if (socket.authorized && socket.activeUser) {
                 serial.setup(socket);
             }
         }
@@ -119,16 +122,20 @@ io.on('connection', function (socket) {
             }
 
         } else {
-            console.log('not authorized');
+            console.log('not socket.authorized');
         }
 
     });
 
 
     socket.on('disconnect', function () {
-        if (activeUser) {
+        if (socket.activeUser) {
             queue.remove(socket, null, null);
             arduino.clean(socket.filename);
+            if(socket.hadUploaded){
+                clearTimeout(timeout);
+                timeout = setTimeout(arduino.RunEmptyCode,60000)
+            }
         }
         socket.closed = true;
         console.log("disconnected  " + socket.id);
@@ -139,10 +146,11 @@ io.on('connection', function (socket) {
 
 
 function Sendupload(socket, data) {
+    clearTimeout(timeout);
     queue.push(socket, function (socket, data) {
         console.log("has compiled : " + socket.hasCompiled);
-
-        if (socket.hasCompiled && activeUser) {
+        
+        if (socket.hasCompiled && socket.activeUser) {
             if (serial.isOpen()) {
                 serial.close(function (error) {
                     if (error) {

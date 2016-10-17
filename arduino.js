@@ -11,6 +11,37 @@ result_default = {
     "conclusion": 'error_conclusion'
 };
 
+fs.writeFile(__dirname +"/emptycode.ino", "void setup(){} \n void loop(){}", function (err) {
+    if (err) {
+        return ('exec error: ' + err);
+    }
+
+    child = exec("make -C "+__dirname+" TARGET=emptycode", function (error, stdout, stderr) {
+
+        if (error) {
+            console.log(error);
+        } else{
+            console.log("empty code compiled")
+        }
+
+    });
+
+});
+
+exports.RunEmptyCode = function (callback) { 
+    var child = exec("make -C "+__dirname +" upload TARGET=emptycode", function (error, stdout, stderr) {
+        if (error !== null) {
+            console.log(error);
+        }
+        console.log('empty code uploaded');
+        if ((callback !== 'undefined') && (typeof (callback) == "function")) {
+            callback();
+        }
+
+    });
+
+};
+
 exports.upload = function (filename, socket, callback) {
     var message = JSON.parse(JSON.stringify(result_default));
     var child = exec("make -C " + __dirname + " upload TARGET=lab/" + filename,  function (error, stdout, stderr) {
@@ -20,8 +51,10 @@ exports.upload = function (filename, socket, callback) {
             message.success = true;
             message.output = stdout;
             message.conclusion = 'upload_success';
+            
         }
         socket.emit('done upload', message);
+        socket.hadUploaded = true;
 
         if (typeof (callback) === "function") {
             callback();
